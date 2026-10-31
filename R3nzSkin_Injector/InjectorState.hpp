@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include "InjectorDiagnostics.hpp"
 
 namespace R3nzSkinInjector {
 

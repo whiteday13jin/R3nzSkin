@@ -7,3 +7,11 @@ void report_loaded() {
     R3nzSkinInjector::clientState = true;
     R3nzSkinInjector::cheatState = true;
 }
+
+void report_fixture_error() {
+    using namespace R3nzSkinInjector;
+    loadDiagnostic = pack_diagnostic({ DiagnosticStage::CreateThread, DiagnosticOutcome::Failed,
+        DiagnosticDomain::NtStatus, 0xC0000022u });
+    probeDiagnostic = pack_diagnostic({ DiagnosticStage::OpenProbe, DiagnosticOutcome::Failed,
+        DiagnosticDomain::Win32, 5u });
+}

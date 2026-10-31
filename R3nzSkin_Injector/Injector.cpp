@@ -7,6 +7,9 @@
 #include <tlhelp32.h>
 #include <regex>
 #include <msclr/marshal_cppstd.h>
+#include <cerrno>
+#include <cstdio>
+#include <cwchar>
 
 #include "Injector.hpp"
 #include "R3nzUI.hpp"
@@ -20,6 +23,44 @@ using namespace System::Globalization;
 using namespace System::Net;
 
 #define xor_clrstr_w(x) msclr::interop::marshal_as<String^>(static_cast<std::wstring>(_XorStrW(x)))
+
+namespace {
+    using namespace R3nzSkinInjector;
+
+    void record_diagnostic(const bool probe, const Diagnostic value, const DWORD pid) noexcept
+    {
+        const auto packed{ pack_diagnostic(value) };
+        (probe ? probeDiagnostic : loadDiagnostic).store(packed);
+        // 临时诊断只记录失败、阻塞等待和终态，不记录每次轮询的全部数据。
+        if (value.outcome == DiagnosticOutcome::Pending && value.stage != DiagnosticStage::WaitThread)
+            return;
+        static std::uint64_t lastLoad{ UINT64_MAX }, lastProbe{ UINT64_MAX };
+        auto& last{ probe ? lastProbe : lastLoad };
+        if (last == packed)
+            return;
+        last = packed;
+
+        wchar_t path[MAX_PATH]{};
+        const auto length{ ::GetModuleFileNameW(nullptr, path, MAX_PATH) };
+        if (!length || length >= MAX_PATH)
+            return;
+        auto slash{ std::wcsrchr(path, L'\\') };
+        if (!slash || wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - path), L"InjectorDiagnostics.log") != 0)
+            return;
+        FILE* file{};
+        if (_wfopen_s(&file, path, L"a") != 0 || !file)
+            return;
+        SYSTEMTIME now{};
+        ::GetSystemTime(&now);
+        std::fprintf(file, "[DEBUG-r3diag] %04u-%02u-%02uT%02u:%02u:%02uZ pid=%lu channel=%s stage=%s outcome=%s domain=%s code=%u hex=0x%08X\n",
+            static_cast<unsigned>(now.wYear), static_cast<unsigned>(now.wMonth), static_cast<unsigned>(now.wDay),
+            static_cast<unsigned>(now.wHour), static_cast<unsigned>(now.wMinute), static_cast<unsigned>(now.wSecond),
+            static_cast<unsigned long>(pid), probe ? "probe" : "load",
+            diagnostic_stage_name(value.stage), diagnostic_outcome_name(value.outcome),
+            diagnostic_domain_name(value.domain), static_cast<unsigned>(value.code), static_cast<unsigned>(value.code));
+        std::fclose(file);
+    }
+}
 
 proclist_t WINAPI Injector::findProcesses(const std::wstring& name) noexcept
 {
@@ -50,8 +91,10 @@ bool WINAPI Injector::isInjected(const std::uint32_t pid) noexcept
 {
 	auto hProcess{ LI_FN(OpenProcess)(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid) };
 
-	if (nullptr == hProcess)
+	if (nullptr == hProcess) {
+		record_diagnostic(true, { DiagnosticStage::OpenProbe, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
 		return false;
+	}
 
 	HMODULE hMods[1024];
 	DWORD cbNeeded{};
@@ -61,11 +104,15 @@ bool WINAPI Injector::isInjected(const std::uint32_t pid) noexcept
 			TCHAR szModName[MAX_PATH];
 			if (LI_FN(K32GetModuleBaseNameW)(hProcess, hMods[i], szModName, sizeof(szModName) / sizeof(TCHAR))) {
 				if (std::wcscmp(szModName, _XorStrW(L"R3nzSkin.dll")) == 0) {
+					record_diagnostic(true, { DiagnosticStage::ModulePresent, DiagnosticOutcome::Completed }, pid);
 					LI_FN(CloseHandle)(hProcess);
 					return true;
 				}
 			}
 		}
+		record_diagnostic(true, { DiagnosticStage::ModuleAbsent, DiagnosticOutcome::NotObserved }, pid);
+	} else {
+		record_diagnostic(true, { DiagnosticStage::EnumModules, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
 	}
 	LI_FN(CloseHandle)(hProcess);
 	return false;
@@ -73,12 +120,20 @@ bool WINAPI Injector::isInjected(const std::uint32_t pid) noexcept
 
 bool WINAPI Injector::inject(const std::uint32_t pid) noexcept
 {
-	TCHAR current_dir[MAX_PATH];
-	LI_FN(GetCurrentDirectoryW)(MAX_PATH, current_dir);
+	TCHAR current_dir[MAX_PATH]{};
+	const auto directoryLength{ LI_FN(GetCurrentDirectoryW)(MAX_PATH, current_dir) };
+	if (!directoryLength || directoryLength >= MAX_PATH) {
+		record_diagnostic(false, { DiagnosticStage::GetDirectory, DiagnosticOutcome::Failed, DiagnosticDomain::Win32,
+			directoryLength ? ERROR_INSUFFICIENT_BUFFER : ::GetLastError() }, pid);
+		return false;
+	}
+	record_diagnostic(false, { DiagnosticStage::OpenTarget }, pid);
 	const auto handle{ LI_FN(OpenProcess)(PROCESS_ALL_ACCESS, false, pid) };
 
-	if (!handle || handle == INVALID_HANDLE_VALUE)
+	if (!handle || handle == INVALID_HANDLE_VALUE) {
+		record_diagnostic(false, { DiagnosticStage::OpenTarget, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
 		return false;
+	}
 
 	FILETIME ft{};
 	SYSTEMTIME st{};
@@ -95,34 +150,51 @@ bool WINAPI Injector::inject(const std::uint32_t pid) noexcept
 	const auto dll_path{ std::wstring(current_dir) + _XorStrW(L"\\R3nzSkin.dll") };
 
 	if (const auto f{ std::ifstream(dll_path) }; !f.is_open()) {
+		record_diagnostic(false, { DiagnosticStage::DllFile, DiagnosticOutcome::Failed, DiagnosticDomain::Crt, static_cast<std::uint32_t>(errno) }, pid);
 		LI_FN(MessageBoxW)(nullptr, _XorStrW(L"R3nzSkin.dll file could not be found.\nTry reinstalling the cheat."), _XorStrW(L"R3nzSkin"), MB_ICONERROR | MB_OK);
 		LI_FN(CloseHandle)(handle);
 		return false;
 	}
 
+	record_diagnostic(false, { DiagnosticStage::AllocatePath }, pid);
 	const auto dll_path_remote{ LI_FN(VirtualAllocEx).get()(handle, nullptr, (dll_path.size() + 1) * sizeof(wchar_t), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) };
 
 	if (!dll_path_remote) {
+		record_diagnostic(false, { DiagnosticStage::AllocatePath, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
 		LI_FN(CloseHandle)(handle);
 		return false;
 	}
 
+	record_diagnostic(false, { DiagnosticStage::WritePath }, pid);
 	if (!LI_FN(WriteProcessMemory).get()(handle, dll_path_remote, dll_path.data(), (dll_path.size() + 1) * sizeof(wchar_t), nullptr)) {
+		record_diagnostic(false, { DiagnosticStage::WritePath, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
 		LI_FN(VirtualFreeEx).get()(handle, dll_path_remote, 0u, MEM_RELEASE);
 		LI_FN(CloseHandle)(handle);
 		return false;
 	}
 
 	HANDLE thread{};
-	LI_FN(NtCreateThreadEx).nt_cached()(&thread, GENERIC_ALL, nullptr, handle, reinterpret_cast<LPTHREAD_START_ROUTINE>(LI_FN(GetProcAddress).get()(LI_FN(GetModuleHandleW).get()(_XorStrW(L"kernel32.dll")), _XorStr("LoadLibraryW"))), dll_path_remote, FALSE, NULL, NULL, NULL, nullptr);
+	record_diagnostic(false, { DiagnosticStage::CreateThread }, pid);
+	const auto threadStatus{ LI_FN(NtCreateThreadEx).nt_cached()(&thread, GENERIC_ALL, nullptr, handle, reinterpret_cast<LPTHREAD_START_ROUTINE>(LI_FN(GetProcAddress).get()(LI_FN(GetModuleHandleW).get()(_XorStrW(L"kernel32.dll")), _XorStr("LoadLibraryW"))), dll_path_remote, FALSE, NULL, NULL, NULL, nullptr) };
 
 	if (!thread || thread == INVALID_HANDLE_VALUE) {
+		record_diagnostic(false, { DiagnosticStage::CreateThread, DiagnosticOutcome::Failed, DiagnosticDomain::NtStatus, static_cast<std::uint32_t>(threadStatus) }, pid);
 		LI_FN(VirtualFreeEx).get()(handle, dll_path_remote, 0u, MEM_RELEASE);
 		LI_FN(CloseHandle)(handle);
 		return false;
 	}
 
-	LI_FN(WaitForSingleObject)(thread, INFINITE);
+	record_diagnostic(false, { DiagnosticStage::WaitThread }, pid);
+	const auto waitResult{ LI_FN(WaitForSingleObject)(thread, INFINITE) };
+	if (waitResult == WAIT_FAILED) {
+		record_diagnostic(false, { DiagnosticStage::WaitThread, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
+	} else {
+		DWORD exitCode{};
+		if (::GetExitCodeThread(thread, &exitCode))
+			record_diagnostic(false, { DiagnosticStage::ThreadExit, DiagnosticOutcome::Completed, DiagnosticDomain::RawExit, exitCode }, pid);
+		else
+			record_diagnostic(false, { DiagnosticStage::ThreadExit, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
+	}
 	LI_FN(CloseHandle)(thread);
 	LI_FN(VirtualFreeEx).get()(handle, dll_path_remote, 0u, MEM_RELEASE);
 	LI_FN(CloseHandle)(handle);

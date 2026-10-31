@@ -28,6 +28,11 @@ namespace R3nzSkinInjector {
 		void updateScreen()
 		{
 			while (true) {
+				const auto loadResult{ unpack_diagnostic(loadDiagnostic.load()) };
+				const auto probeResult{ unpack_diagnostic(probeDiagnostic.load()) };
+				const auto detail{ std::string("Load: ") + format_diagnostic(loadResult)
+					+ "\r\nProbe: " + format_diagnostic(probeResult) };
+				this->diagnosticsBox->Text = gcnew String(detail.c_str());
 				if (clientState) {
 					this->clientStatusLabel->Text = L"Found";
 					this->clientStatusLabel->ForeColor = Color::FromArgb(255, 252, 220, 107);
@@ -108,10 +113,21 @@ namespace R3nzSkinInjector {
 		MenuStrip^ menuStrip;
 		ToolStripMenuItem^ toolstripmenuItem;
 		ToolStripMenuItem^ toolstripmenuItem2;
+		TextBox^ diagnosticsBox;
 #pragma region Windows Form Designer generated code
 		   void InitializeComponent()
 		   {
 			   auto resources = gcnew ComponentResourceManager(R3nzUI::typeid);
+			   this->diagnosticsBox = gcnew TextBox();
+			   this->diagnosticsBox->Multiline = true;
+			   this->diagnosticsBox->ReadOnly = true;
+			   this->diagnosticsBox->ScrollBars = ScrollBars::Vertical;
+			   this->diagnosticsBox->Location = Point(12, 284);
+			   this->diagnosticsBox->Size = Drawing::Size(250, 126);
+			   this->diagnosticsBox->Font = gcnew Drawing::Font(L"Consolas", 8.0F);
+			   this->diagnosticsBox->BackColor = Color::FromArgb(32, 30, 30);
+			   this->diagnosticsBox->ForeColor = Color::White;
+			   this->diagnosticsBox->Text = L"Load: Not attempted\r\nProbe: Not attempted";
 			   this->startButton = gcnew Button();
 			   this->injectorStatusLabel = gcnew Label();
 			   this->dllStatusLabel = gcnew Label();
@@ -255,7 +271,7 @@ namespace R3nzSkinInjector {
 			   this->copyrightLabel->Cursor = Cursors::Hand;
 			   this->copyrightLabel->LinkBehavior = LinkBehavior::NeverUnderline;
 			   this->copyrightLabel->LinkColor = Color::Silver;
-			   this->copyrightLabel->Location = Point(20, 284);
+			   this->copyrightLabel->Location = Point(20, 420);
 			   this->copyrightLabel->Name = L"copyrightLabel";
 			   this->copyrightLabel->Size = Drawing::Size(207, 14);
 			   this->copyrightLabel->TabIndex = 11;
@@ -298,7 +314,8 @@ namespace R3nzSkinInjector {
 			   this->AutoScaleDimensions = SizeF(7, 14);
 			   this->AutoScaleMode = Windows::Forms::AutoScaleMode::Font;
 			   this->BackColor = Color::FromArgb(32, 30, 30);
-			   this->ClientSize = Drawing::Size(273, 307);
+			   this->ClientSize = Drawing::Size(273, 443);
+			   this->Controls->Add(this->diagnosticsBox);
 			   this->Controls->Add(this->menuStrip);
 		   	   this->Controls->Add(this->copyrightLabel);
 			   this->Controls->Add(this->dllStatusGroupBox);
@@ -313,7 +330,7 @@ namespace R3nzSkinInjector {
 			   this->MaximizeBox = false;
 			   this->Name = L"R3nzUI";
 			   this->RightToLeft = Windows::Forms::RightToLeft::No;
-			   this->Text = L"";
+			   this->Text = L"R3nzSkin fork.3 diagnostics";
 			   this->Load += gcnew EventHandler(this, &R3nzUI::R3nzUI_Load);
 			   this->Resize += gcnew EventHandler(this, &R3nzUI::R3nzUI_Resize);
 			   this->injectorStatusGroupBox->ResumeLayout(false);
