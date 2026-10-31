@@ -11,10 +11,10 @@ int test_injector_policy() {
     int attempts{}, probes{};
     auto probe = [&]() { ++probes; return ModuleProbe::Unavailable; };
     auto attempt = [&]() { ++attempts; return true; };
-    // 回放实际 EnumProcessModules 失败：查询不可用时不得再进入加载分支。
+    // 查询不可用时保留用户启用的加载流程，但不能误报模块已确认存在。
     const bool unavailable{ refresh_module_state(true, probe, attempt) };
-    check(!unavailable && attempts == 0,
-        "FAIL: unavailable module query triggered a load or claimed success");
+    check(!unavailable && attempts == 1 && probes == 2,
+        "FAIL: unavailable query blocked the original load path or claimed confirmed success");
 
     for (const auto after : { ModuleProbe::Absent, ModuleProbe::Unavailable, ModuleProbe::Present }) {
         attempts = probes = 0;
@@ -34,13 +34,6 @@ int test_injector_policy() {
     probes = attempts = 0;
     check(!refresh_module_state(false, probe, attempt) && probes == 0 && attempts == 0,
         "FAIL: stopped worker opened target for module query");
-    ModuleSession session;
-    check(!session.refresh(true, probe, attempt), "FAIL: unavailable query claimed success");
-    check(!session.refresh(true, probe, attempt) && probes == 1 && attempts == 0,
-        "FAIL: paused session repeatedly queried target");
-    session.refresh(false, probe, attempt);
-    session.refresh(true, probe, attempt);
-    check(probes == 2 && attempts == 0, "FAIL: explicit stop did not reset query pause");
-    if (!failures) std::puts("PASS: unavailable queries suppress loading; completed threads require module confirmation");
+    if (!failures) std::puts("PASS: enabled load path preserved; stopped worker does not probe; thread completion requires module confirmation");
     return failures;
 }

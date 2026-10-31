@@ -10,7 +10,6 @@
 #include <cerrno>
 #include <cstdio>
 #include <cwchar>
-#include <map>
 
 #include "Injector.hpp"
 #include "R3nzUI.hpp"
@@ -238,8 +237,8 @@ void WINAPI Injector::enableDebugPrivilege() noexcept
 
 void Injector::run() noexcept
 {
-	// 默认不启用调试权限；停止状态只枚举进程名，不打开游戏句柄。
-	std::map<std::uint32_t, R3nzSkinInjector::ModuleSession> moduleSessions;
+	// 保留原有权限与加载能力；停止状态只枚举进程名，不打开游戏句柄。
+	enableDebugPrivilege();
 	while (true) {
 		const auto& league_client_processes{ Injector::findProcesses(_XorStrW(L"LeagueClient.exe")) };
 		const auto& league_processes{ Injector::findProcesses(_XorStrW(L"League of Legends.exe")) };
@@ -252,19 +251,21 @@ void Injector::run() noexcept
 			break;
 
 		if (!R3nzSkinInjector::btnState.load() || league_processes.empty()) {
-			moduleSessions.clear();
 			R3nzSkinInjector::cheatState = false;
 			std::this_thread::sleep_for(1s);
 			continue;
 		}
 		for (auto& pid : league_processes) {
-			R3nzSkinInjector::cheatState = moduleSessions[pid].refresh(
+			R3nzSkinInjector::cheatState = R3nzSkinInjector::refresh_module_state(
 				R3nzSkinInjector::btnState.load(),
 				[pid] { return Injector::probeModule(pid); },
 				[pid] {
 					std::this_thread::sleep_for(1.5s);
 					return R3nzSkinInjector::btnState.load() && Injector::inject(pid);
 				});
+			// 保留原来未确认加载时的轮询间隔，不因新增诊断加快重复尝试。
+			if (!R3nzSkinInjector::cheatState.load())
+				std::this_thread::sleep_for(1s);
 		}
 		std::this_thread::sleep_for(1s);
 	}
