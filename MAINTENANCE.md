@@ -77,6 +77,11 @@ python tools/inspect_compatibility.py "D:\Games\League\Game\League of Legends.ex
 当前环境没有可用的本地 MSBuild/Visual C++ 工具链，因此使用仓库 Windows CI 验证两个 DLL 构建配置。
 CI 只编译，不运行 DLL 或注入器；构建结果与游戏运行验证分别记录。
 
+已验证：提交 `a9948fd80b895ce2167910000361d3a419782424` 的 [Windows CI](https://github.com/whiteday13jin/R3nzSkin/actions/runs/41211287063) 通过。
+`ChinaServer x64` 与 `RiotGamesServers x64` 两个 DLL 均编译成功，两个作业中的 8 项离线工具测试均通过。
+本地同样通过 8 项测试。CI 对继承的旧 Action 版本给出了 Node 运行时弃用提示，本次没有影响构建。
+这证明现有核心仍可构建，不证明当前国服能够加载或换肤。
+
 ## 后续同步与验收
 
 本地远端应为：`origin` 指向本 Fork，`upstream` 指向 hydy100。
