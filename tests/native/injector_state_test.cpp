@@ -12,9 +12,10 @@ bool ui_sees_client();
 void report_fixture_error();
 std::string ui_load_diagnostic();
 std::string ui_probe_diagnostic();
+int test_injector_policy();
 
 int main() {
-    int failures = 0;
+    int failures = test_injector_policy();
     click_start();
     if (!worker_should_inject()) {
         std::puts("FAIL: Start clicked, worker still sees stopped");

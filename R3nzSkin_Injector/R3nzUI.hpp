@@ -45,8 +45,16 @@ namespace R3nzSkinInjector {
 				if (gameState) {
 					this->gameStatusLabel->Text = L"Found";
 					this->gameStatusLabel->ForeColor = Color::FromArgb(255, 252, 220, 107);
-					if (cheatState) {
+					if (!btnState) {
+						this->dllStatusLabel->Text = L"Not checked";
+						this->dllStatusLabel->ForeColor = Color::FromArgb(255, 252, 220, 107);
+					}
+					else if (cheatState) {
 						this->dllStatusLabel->Text = L"Injected";
+						this->dllStatusLabel->ForeColor = Color::FromArgb(255, 252, 220, 107);
+					}
+					else if (probeResult.outcome == DiagnosticOutcome::Failed) {
+						this->dllStatusLabel->Text = L"Query unavailable";
 						this->dllStatusLabel->ForeColor = Color::FromArgb(255, 252, 220, 107);
 					}
 					else {
@@ -330,7 +338,7 @@ namespace R3nzSkinInjector {
 			   this->MaximizeBox = false;
 			   this->Name = L"R3nzUI";
 			   this->RightToLeft = Windows::Forms::RightToLeft::No;
-			   this->Text = L"R3nzSkin fork.3 diagnostics";
+			   this->Text = L"R3nzSkin fork.4 diagnostics";
 			   this->Load += gcnew EventHandler(this, &R3nzUI::R3nzUI_Load);
 			   this->Resize += gcnew EventHandler(this, &R3nzUI::R3nzUI_Resize);
 			   this->injectorStatusGroupBox->ResumeLayout(false);

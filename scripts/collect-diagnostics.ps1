@@ -40,18 +40,36 @@ foreach ($line in (Get-Content -LiteralPath $logPath -Tail 200)) {
     }
 }
 if ($entries.Count -eq 0) { Write-Output '日志中没有可解析的诊断结果'; exit 2 }
-$lastLoad = $entries | Where-Object channel -eq 'load' | Select-Object -Last 1
-$lastProbe = $entries | Where-Object channel -eq 'probe' | Select-Object -Last 1
+$targetPid = $entries[-1].pid
+$currentEntries = @($entries | Where-Object pid -eq $targetPid)
+$lastLoad = $currentEntries | Where-Object channel -eq 'load' | Select-Object -Last 1
+$lastProbe = $currentEntries | Where-Object channel -eq 'probe' | Select-Object -Last 1
+$firstLoad = $currentEntries | Where-Object { $_.channel -eq 'load' -and $_.outcome -ne 'pending' } | Select-Object -First 1
+$firstFailure = $currentEntries | Where-Object outcome -eq 'failed' | Select-Object -First 1
+$sessions = @($entries | Group-Object pid | ForEach-Object {
+    [ordered]@{
+        pid = [uint32]$_.Name
+        first_time_utc = $_.Group[0].time_utc
+        last_time_utc = $_.Group[-1].time_utc
+        first_load_result = ($_.Group | Where-Object { $_.channel -eq 'load' -and $_.outcome -ne 'pending' } | Select-Object -First 1)
+        first_recorded_failure = ($_.Group | Where-Object outcome -eq 'failed' | Select-Object -First 1)
+    }
+})
 $verdict = 'unverified'
-if ($lastLoad -and $lastLoad.outcome -eq 'failed') { $verdict = 'load_stage_failed' }
+if ($lastProbe -and $lastProbe.outcome -eq 'failed') { $verdict = 'module_query_unavailable' }
+elseif ($lastLoad -and $lastLoad.outcome -eq 'failed') { $verdict = 'load_stage_failed' }
 elseif ($lastProbe -and $lastProbe.stage -eq 'Module observed') { $verdict = 'module_observed_only' }
 $report = [ordered]@{
     package_version = $manifest.version
     source_commit = $manifest.source_commit
     game_version = $gameVersion
     verdict = $verdict
+    target_pid = $targetPid
+    first_load_result = $firstLoad
+    first_recorded_failure = $firstFailure
     last_load = $lastLoad
     last_probe = $lastProbe
+    sessions = $sessions
     entries = $entries
 }
 $reportPath = Join-Path $packagePath 'diagnostic-report.json'
@@ -59,5 +77,6 @@ $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $reportPath -Encodi
 Write-Output ('诊断报告：' + $reportPath)
 if ($lastLoad) { Write-Output ('Load: ' + $lastLoad.stage + ' / ' + $lastLoad.outcome + ' / ' + $lastLoad.domain + ' ' + $lastLoad.hex) }
 if ($lastProbe) { Write-Output ('Probe: ' + $lastProbe.stage + ' / ' + $lastProbe.outcome + ' / ' + $lastProbe.domain + ' ' + $lastProbe.hex) }
-if ($verdict -eq 'load_stage_failed') { exit 1 }
-exit 0
+if ($verdict -in @('load_stage_failed', 'module_query_unavailable')) { exit 1 }
+if ($verdict -eq 'module_observed_only') { exit 0 }
+exit 2

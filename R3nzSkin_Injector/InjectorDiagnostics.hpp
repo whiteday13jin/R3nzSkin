@@ -9,7 +9,7 @@ namespace R3nzSkinInjector {
     enum class DiagnosticStage : std::uint8_t {
         Idle, OpenProbe, EnumModules, ModuleAbsent, ModulePresent,
         GetDirectory, OpenTarget, DllFile, AllocatePath, WritePath,
-        CreateThread, WaitThread, ThreadExit, LoadCallReturned
+        CreateThread, WaitThread, ThreadExit, LoadCallReturned, ModuleName
     };
     enum class DiagnosticOutcome : std::uint8_t { Pending, Completed, Failed, NotObserved };
     enum class DiagnosticDomain : std::uint8_t { None, Win32, NtStatus, Crt, RawExit };
@@ -41,6 +41,7 @@ namespace R3nzSkinInjector {
         switch (stage) {
         case DiagnosticStage::OpenProbe: return "OpenProcess(probe)";
         case DiagnosticStage::EnumModules: return "EnumProcessModules";
+        case DiagnosticStage::ModuleName: return "GetModuleBaseName";
         case DiagnosticStage::ModuleAbsent: return "Module not observed";
         case DiagnosticStage::ModulePresent: return "Module observed";
         case DiagnosticStage::GetDirectory: return "GetCurrentDirectory";

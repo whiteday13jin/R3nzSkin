@@ -10,6 +10,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cwchar>
+#include <map>
 
 #include "Injector.hpp"
 #include "R3nzUI.hpp"
@@ -35,10 +36,13 @@ namespace {
         if (value.outcome == DiagnosticOutcome::Pending && value.stage != DiagnosticStage::WaitThread)
             return;
         static std::uint64_t lastLoad{ UINT64_MAX }, lastProbe{ UINT64_MAX };
+        static DWORD lastLoadPid{}, lastProbePid{};
         auto& last{ probe ? lastProbe : lastLoad };
-        if (last == packed)
+        auto& lastPid{ probe ? lastProbePid : lastLoadPid };
+        if (last == packed && lastPid == pid)
             return;
         last = packed;
+        lastPid = pid;
 
         wchar_t path[MAX_PATH]{};
         const auto length{ ::GetModuleFileNameW(nullptr, path, MAX_PATH) };
@@ -87,35 +91,47 @@ proclist_t WINAPI Injector::findProcesses(const std::wstring& name) noexcept
 	return list;
 }
 
-bool WINAPI Injector::isInjected(const std::uint32_t pid) noexcept
+R3nzSkinInjector::ModuleProbe WINAPI Injector::probeModule(const std::uint32_t pid) noexcept
 {
 	auto hProcess{ LI_FN(OpenProcess)(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid) };
 
 	if (nullptr == hProcess) {
 		record_diagnostic(true, { DiagnosticStage::OpenProbe, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
-		return false;
+		return ModuleProbe::Unavailable;
 	}
 
 	HMODULE hMods[1024];
 	DWORD cbNeeded{};
 
 	if (LI_FN(K32EnumProcessModules)(hProcess, hMods, sizeof(hMods), &cbNeeded)) {
+		// cbNeeded 是所需总容量，可能超过实际写入的固定数组，不能越界读取。
+		if (cbNeeded > sizeof(hMods)) {
+			record_diagnostic(true, { DiagnosticStage::EnumModules, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ERROR_INSUFFICIENT_BUFFER }, pid);
+			LI_FN(CloseHandle)(hProcess);
+			return ModuleProbe::Unavailable;
+		}
 		for (auto i{ 0u }; i < (cbNeeded / sizeof(HMODULE)); ++i) {
 			TCHAR szModName[MAX_PATH];
 			if (LI_FN(K32GetModuleBaseNameW)(hProcess, hMods[i], szModName, sizeof(szModName) / sizeof(TCHAR))) {
 				if (std::wcscmp(szModName, _XorStrW(L"R3nzSkin.dll")) == 0) {
 					record_diagnostic(true, { DiagnosticStage::ModulePresent, DiagnosticOutcome::Completed }, pid);
 					LI_FN(CloseHandle)(hProcess);
-					return true;
+					return ModuleProbe::Present;
 				}
+			} else {
+				record_diagnostic(true, { DiagnosticStage::ModuleName, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
+				LI_FN(CloseHandle)(hProcess);
+				return ModuleProbe::Unavailable;
 			}
 		}
 		record_diagnostic(true, { DiagnosticStage::ModuleAbsent, DiagnosticOutcome::NotObserved }, pid);
 	} else {
 		record_diagnostic(true, { DiagnosticStage::EnumModules, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
+		LI_FN(CloseHandle)(hProcess);
+		return ModuleProbe::Unavailable;
 	}
 	LI_FN(CloseHandle)(hProcess);
-	return false;
+	return ModuleProbe::Absent;
 }
 
 bool WINAPI Injector::inject(const std::uint32_t pid) noexcept
@@ -186,19 +202,21 @@ bool WINAPI Injector::inject(const std::uint32_t pid) noexcept
 
 	record_diagnostic(false, { DiagnosticStage::WaitThread }, pid);
 	const auto waitResult{ LI_FN(WaitForSingleObject)(thread, INFINITE) };
+	bool completed{ false };
 	if (waitResult == WAIT_FAILED) {
 		record_diagnostic(false, { DiagnosticStage::WaitThread, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
 	} else {
 		DWORD exitCode{};
-		if (::GetExitCodeThread(thread, &exitCode))
+		if (::GetExitCodeThread(thread, &exitCode)) {
 			record_diagnostic(false, { DiagnosticStage::ThreadExit, DiagnosticOutcome::Completed, DiagnosticDomain::RawExit, exitCode }, pid);
-		else
+			completed = waitResult == WAIT_OBJECT_0;
+		} else
 			record_diagnostic(false, { DiagnosticStage::ThreadExit, DiagnosticOutcome::Failed, DiagnosticDomain::Win32, ::GetLastError() }, pid);
 	}
 	LI_FN(CloseHandle)(thread);
 	LI_FN(VirtualFreeEx).get()(handle, dll_path_remote, 0u, MEM_RELEASE);
 	LI_FN(CloseHandle)(handle);
-	return true;
+	return completed;
 }
 
 void WINAPI Injector::enableDebugPrivilege() noexcept
@@ -220,7 +238,8 @@ void WINAPI Injector::enableDebugPrivilege() noexcept
 
 void Injector::run() noexcept
 {
-	enableDebugPrivilege();
+	// 默认不启用调试权限；停止状态只枚举进程名，不打开游戏句柄。
+	std::map<std::uint32_t, R3nzSkinInjector::ModuleSession> moduleSessions;
 	while (true) {
 		const auto& league_client_processes{ Injector::findProcesses(_XorStrW(L"LeagueClient.exe")) };
 		const auto& league_processes{ Injector::findProcesses(_XorStrW(L"League of Legends.exe")) };
@@ -232,20 +251,20 @@ void Injector::run() noexcept
 		if (league_processes.size() > 0xff)
 			break;
 
+		if (!R3nzSkinInjector::btnState.load() || league_processes.empty()) {
+			moduleSessions.clear();
+			R3nzSkinInjector::cheatState = false;
+			std::this_thread::sleep_for(1s);
+			continue;
+		}
 		for (auto& pid : league_processes) {
-			if (!Injector::isInjected(pid)) {
-				R3nzSkinInjector::cheatState = false;
-				if (R3nzSkinInjector::btnState) {
+			R3nzSkinInjector::cheatState = moduleSessions[pid].refresh(
+				R3nzSkinInjector::btnState.load(),
+				[pid] { return Injector::probeModule(pid); },
+				[pid] {
 					std::this_thread::sleep_for(1.5s);
-					if (Injector::inject(pid))
-						R3nzSkinInjector::cheatState = true;
-					else
-						R3nzSkinInjector::cheatState = false;
-				}
-				std::this_thread::sleep_for(1s);
-			} else {
-				R3nzSkinInjector::cheatState = true;
-			}
+					return R3nzSkinInjector::btnState.load() && Injector::inject(pid);
+				});
 		}
 		std::this_thread::sleep_for(1s);
 	}
