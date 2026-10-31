@@ -29,6 +29,18 @@ try {
     $sourceCommit = & git rev-parse HEAD
     if ($LASTEXITCODE -ne 0) { throw '无法读取源码提交号' }
     $sourceDirty = [bool](& git status --porcelain)
+    # 用不同翻译单元覆盖实际的界面/后台状态共享，不访问游戏进程。
+    $testOutputDir = Join-Path $repoRoot 'artifacts\native-test'
+    $testObjectDir = Join-Path $repoRoot 'artifacts\obj\state-tests'
+    $testArguments = @(
+        (Join-Path $repoRoot 'tests\native\InjectorStateTests.vcxproj'),
+        '/t:Rebuild', '/nologo', '/verbosity:minimal', '/p:Platform=x64', '/p:Configuration=Release',
+        "/p:OutDir=$testOutputDir\", "/p:IntDir=$testObjectDir\"
+    )
+    & $MSBuildPath @testArguments
+    if ($LASTEXITCODE -ne 0) { throw '启动器跨文件状态测试编译失败' }
+    & (Join-Path $testOutputDir 'InjectorStateTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw '界面与后台状态未同步，停止构建发布' }
     $configurations = if ($Configuration -eq 'All') { @('ChinaServer', 'RiotGamesServers') } else { @($Configuration) }
     foreach ($item in $configurations) {
         $buildDir = Join-Path $repoRoot "artifacts\build\$item"

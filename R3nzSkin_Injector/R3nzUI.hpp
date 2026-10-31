@@ -1,6 +1,7 @@
 #pragma once
 
 #include "xorstr.hpp"
+#include "InjectorState.hpp"
 
 namespace R3nzSkinInjector {
 
@@ -13,10 +14,6 @@ namespace R3nzSkinInjector {
 	using namespace System::Threading;
 	using namespace System::IO;
 
-	static auto btnState{ false };
-	static auto gameState{ false };
-	static auto cheatState{ false };
-	static auto clientState{ false };
 
 
 	public ref class R3nzUI sealed : public Form

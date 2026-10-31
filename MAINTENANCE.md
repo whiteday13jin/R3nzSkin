@@ -2,6 +2,39 @@
 
 核查日期：2026-10-31。基线：`hydy100/R3nzSkin@8ea86a63a261caf0619af6c12777acf19b300d2b`。
 
+## fork.2：修复启动器状态隔离
+
+用户实测 fork.1 后反馈游戏内无菜单，启动器持续显示 `Not Injected`。
+根因之一已确定：`R3nzUI.hpp` 中的四个命名空间 `static` 变量在 `main.cpp` 与 `Injector.cpp` 中各有一份。
+这使界面的 Start 请求不能可靠到达后台，后台的游戏与加载状态也不能传回界面。
+
+将原定义原样移到可测试的头文件后，跨翻译单元测试稳定失败：
+
+```text
+FAIL: Start clicked, worker still sees stopped
+FAIL: worker reports loaded, UI still shows Not Injected
+FAIL: process status is not shared with UI
+```
+
+修复为同一个 `InjectorState.hpp` 中的 C++17 内联原子变量，保持实际读写调用不变，测试通过：
+
+```text
+PASS: Start, Stop and status cross translation units
+```
+
+复现命令（WSL，仓库根目录）：
+
+```sh
+mkdir -p artifacts/native-test
+g++ -std=c++17 tests/native/injector_state_ui.cpp tests/native/injector_state_worker.cpp tests/native/injector_state_test.cpp -o artifacts/native-test/injector-state-test
+artifacts/native-test/injector-state-test
+```
+
+Windows 发布构建也会通过 MSVC 编译并运行同一组测试。
+共享状态的定义和线程同步规则集中在一个不依赖 Windows Forms 的头文件，调用者和测试使用同一处定义。
+本轮不添加新的状态框架；实际模块加载与游戏内初始化继续分开验证。
+尚未在用户游戏进程中验证 fork.2，不能据回归测试声称国服加载已经成功。
+
 ## 本轮工程维护：16.21.1-fork.1
 
 源码本地目录为 `E:\Dev\r3nskin`。已对齐当前最新上游 `16.21.1`；本轮不虚构新的国服偏移或运行验证结果。

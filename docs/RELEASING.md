@@ -1,6 +1,6 @@
 # 构建与发布
 
-本轮版本：`16.21.1-fork.1`；核心上游：`hydy100/R3nzSkin@8ea86a63a261caf0619af6c12777acf19b300d2b`。
+本轮版本：`16.21.1-fork.2`；核心上游：`hydy100/R3nzSkin@8ea86a63a261caf0619af6c12777acf19b300d2b`。
 
 ## 一次完成构建与打包
 
@@ -12,6 +12,7 @@
 ```
 
 流程会检查 Git 工作区、运行维护工具测试、编译两套 x64 的 DLL 与公开启动器、校验构建记录并生成 ZIP。
+编译前还会用 MSVC 构建、执行跨翻译单元的启动器状态测试，阻止 Start/Stop 与界面状态再次相互隔离。
 只构建国服工程配置时使用 `-Configuration ChinaServer`。
 默认不会运行生成的程序，也不会创建或公开 GitHub Release。
 
