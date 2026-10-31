@@ -18,42 +18,14 @@ namespace R3nzSkinInjector {
 	static auto cheatState{ false };
 	static auto clientState{ false };
 
-	delegate String^ MyDelegate();
-	ref class LambdaWrapper sealed
-	{
-	public:
-		String^ InvokeLambda()
-		{
-			return lambdaFunction();
-		}
-	private:
-		MyDelegate^ lambdaFunction;
-	public:
-		LambdaWrapper()
-		{
-			lambdaFunction = gcnew MyDelegate(this, &LambdaWrapper::LambdaMethod);
-		}
-		String^ LambdaMethod()
-		{
-			auto characters = gcnew String("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
-			auto random = gcnew Random(static_cast<int>(DateTime::Now.Ticks));
-
-			auto buffer = gcnew array<Char>(8);
-			for (int i = 0; i < 8; i++)
-			{
-				buffer[i] = characters[random->Next(characters->Length)];
-			}
-
-			return gcnew String(buffer);
-		}
-	};
 
 	public ref class R3nzUI sealed : public Form
 	{
 	public:
 		R3nzUI()
 		{
-			InitializeComponent(); loadSettings(); renameProgram();
+			// 保持发布包中的 EXE 文件名稳定，便于重复启动和校验。
+			InitializeComponent(); loadSettings();
 		}
 
 		void updateScreen()
@@ -118,16 +90,6 @@ namespace R3nzSkinInjector {
 			}
 		}
 
-		void renameProgram()
-		{
-			auto wrapper = gcnew LambdaWrapper();
-
-			// Executable
-			File::Move(Application::ExecutablePath, String::Format("{0}\\{1}.exe", Application::StartupPath, wrapper->InvokeLambda()));
-
-			// Title
-			this->Text = wrapper->InvokeLambda();
-		}
 	protected:
 		~R3nzUI() { if (components) delete components; }
 	private:

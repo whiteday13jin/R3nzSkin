@@ -1,0 +1,9 @@
+{
+  "version": "16.21.1-fork.1",
+  "repository": "whiteday13jin/R3nzSkin",
+  "game_patch": "16.21",
+  "upstream_repository": "hydy100/R3nzSkin",
+  "upstream_commit": "8ea86a63a261caf0619af6c12777acf19b300d2b",
+  "runtime_verification": "unverified",
+  "loader": "public-source-legacy"
+}

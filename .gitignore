@@ -5,6 +5,7 @@
 __pycache__/
 *.py[cod]
 /local-reports/
+/artifacts/
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 

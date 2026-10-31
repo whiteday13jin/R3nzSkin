@@ -17,7 +17,9 @@ using namespace System::Net;
 int main([[maybe_unused]] array<String^>^ args)
 {
 	std::srand(static_cast<unsigned int>(std::time(nullptr)));
-	Injector::autoUpdate();
+	// 使用发布包目录定位配套 DLL，避免从快捷方式的工作目录加载错误文件。
+	System::IO::Directory::SetCurrentDirectory(AppDomain::CurrentDomain->BaseDirectory);
+	// Fork 通过带版本号的完整发布包更新，停用指向已归档仓库的旧自动更新入口。
 	
 	Application::EnableVisualStyles();
 	Application::SetCompatibleTextRenderingDefault(false);

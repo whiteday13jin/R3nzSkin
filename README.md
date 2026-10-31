@@ -15,10 +15,11 @@
 ## 本 Fork 的维护状态
 
 本仓库以 [hydy100/R3nzSkin](https://github.com/hydy100/R3nzSkin) 为上游，保留原项目实现。
-当前新增的是离线兼容检查和维护记录；**尚未验证当前国服运行能力，也不提供国服可用保证**。
+当前版本 `16.21.1-fork.1` 已补齐公开源码启动器的构建、打包、版本绑定和 SHA-256 校验流程。
+**尚未验证当前国服运行能力，也不提供国服可用保证**。
 源码编译成功、磁盘特征命中和实际运行能力是独立结论。
 
-维护依据、验证方法和后续决策见 [MAINTENANCE.md](MAINTENANCE.md)。
+[使用说明](docs/USAGE.md) · [构建与发布脚本](docs/RELEASING.md) · [维护评估](MAINTENANCE.md)
 
 # **Disclaimer**
 

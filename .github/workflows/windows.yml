@@ -2,19 +2,29 @@ name: Windows
 
 on: [push, pull_request, workflow_dispatch]
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-2022
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-2022]
         configuration: [RiotGamesServers, ChinaServer]
     steps:
-    - uses: actions/checkout@v3.5.2
-    - name: Test offline maintenance tools
-      run: python -m unittest discover -s tests -v
-    - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v1.3.1
-    - name: Build
-      shell: cmd
-      run: msbuild R3nzSkin/R3nzSkin.vcxproj /p:Platform=x64 /p:Configuration=${{ matrix.configuration }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3
+        with:
+          vs-version: '[17.0,18.0)'
+      - name: Build, test and package
+        shell: pwsh
+        run: ./scripts/release.ps1 -Configuration '${{ matrix.configuration }}'
+      - name: Upload checked release package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.configuration }}
+          path: artifacts/release/*/*
+          if-no-files-found: error
+          retention-days: 14
