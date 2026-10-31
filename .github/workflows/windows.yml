@@ -11,6 +11,8 @@ jobs:
         configuration: [RiotGamesServers, ChinaServer]
     steps:
     - uses: actions/checkout@v3.5.2
+    - name: Test offline maintenance tools
+      run: python -m unittest discover -s tests -v
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v1.3.1
     - name: Build
