@@ -8,6 +8,7 @@ import json
 import re
 import struct
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -121,6 +122,9 @@ def git_output(root: Path, *arguments: str) -> str:
 
 
 def main() -> int:
+    # 英文 Windows 的管道可能默认 CP1252，中文诊断应固定使用 UTF-8。
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)

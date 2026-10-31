@@ -1,6 +1,7 @@
 """验证发布包来源绑定、混包拒绝和完整性；不运行任何游戏程序。"""
 
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -121,7 +122,9 @@ class ReleaseTests(unittest.TestCase):
         prefix = [sys.executable, str(tool), 'verify', str(path), '--require-checksum']
         correct = ['--source-commit', self.commit, '--version', self.settings['version'],
                    '--configuration', self.configuration]
-        self.assertEqual(subprocess.run(prefix + correct, capture_output=True).returncode, 0)
+        environment = os.environ | {'PYTHONIOENCODING': 'cp1252'}
+        result = subprocess.run(prefix + correct, capture_output=True, env=environment)
+        self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', errors='replace'))
         for option, value in (('--source-commit', 'c' * 40), ('--version', '16.21.1-fork.2'),
                               ('--configuration', 'RiotGamesServers')):
             with self.subTest(option=option):

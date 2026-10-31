@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import struct
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -115,6 +116,8 @@ def inspect_file(path: Path, signatures: dict[str, list[str]]) -> dict:
 
 
 def main() -> int:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('files', type=Path, nargs='+', help='磁盘上的 EXE 或 DLL')
     parser.add_argument('--source', type=Path,

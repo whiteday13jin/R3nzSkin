@@ -32,9 +32,9 @@ try {
     $assets = @()
     foreach ($item in $configurations) {
         $stem = "R3nzSkin-$($settings.version)-$item-x64.zip"
-        $matches = @(Get-ChildItem -LiteralPath $releaseDir -Filter $stem -File -Recurse)
-        if ($matches.Count -ne 1) { throw "$stem 必须恰好存在一份，实际找到 $($matches.Count) 份" }
-        $zipPath = $matches[0].FullName
+        $packageMatches = @(Get-ChildItem -LiteralPath $releaseDir -Filter $stem -File -Recurse)
+        if ($packageMatches.Count -ne 1) { throw "$stem 必须恰好存在一份，实际找到 $($packageMatches.Count) 份" }
+        $zipPath = $packageMatches[0].FullName
         & python tools/package_release.py verify $zipPath --source-commit $commit --version $settings.version --configuration $item --require-checksum
         if ($LASTEXITCODE -ne 0) { throw "$item 发布包来源或完整性校验失败" }
         $assets += $zipPath
