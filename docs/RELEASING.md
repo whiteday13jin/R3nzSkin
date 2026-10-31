@@ -29,6 +29,16 @@
 下载 Artifact 后解压外层容器，里面才是正式校验的 ZIP 和 `.sha256` 文件。
 Actions 通过只证明构建、维护测试与包完整性通过，不证明游戏内运行能力。
 
+若要从 CI 产物直接准备发布，无需本地 C++ 工具链。先切换到 CI 对应的准确源码提交，并下载该次运行的产物：
+
+```powershell
+gh run download <运行ID> --repo whiteday13jin/R3nzSkin --dir artifacts/downloaded
+.\scripts\release.ps1 -PackageDirectory artifacts/downloaded
+```
+
+脚本会递归查找两个配置的包，要求各自恰好一份，并检查源码提交、版本、配置和内外 SHA-256。
+不需要重新打包；确认后给同一命令增加 `-CreateDraft` 即可创建草稿。
+
 ## 从已有构建产物打包
 
 同一源码提交下已有 `artifacts/build/<配置>/build-info.json` 及两个二进制时：
@@ -49,6 +59,7 @@ Actions 通过只证明构建、维护测试与包完整性通过，不证明游
 ```
 
 或在已有可信构建、尚未生成同名发布包时加 `-SkipBuild`。
+已有 CI ZIP 则使用 `-PackageDirectory`，不要与 `-SkipBuild` 混用。
 脚本始终创建 **draft + prerelease**，上传本轮生成的 ZIP 和 SHA-256；不会覆盖现有 Release，也不会自动公开发布。
 发布说明自动写入精确源码提交、上游基线与未验证的运行状态。
 公开发布前核对二进制来源、校验结果与运行验证记录，不将工程配置名称当成服务器兼容证明。

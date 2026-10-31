@@ -2,6 +2,8 @@
 
 import json
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -112,6 +114,20 @@ class ReleaseTests(unittest.TestCase):
         self.settings['runtime_verification'] = 'verified'
         with self.assertRaisesRegex(ValueError, 'unverified'):
             self.package()
+
+    def test_verify_cli_enforces_source_version_configuration_and_outer_checksum(self):
+        path = self.package()
+        tool = Path(__file__).resolve().parents[1] / 'tools' / 'package_release.py'
+        prefix = [sys.executable, str(tool), 'verify', str(path), '--require-checksum']
+        correct = ['--source-commit', self.commit, '--version', self.settings['version'],
+                   '--configuration', self.configuration]
+        self.assertEqual(subprocess.run(prefix + correct, capture_output=True).returncode, 0)
+        for option, value in (('--source-commit', 'c' * 40), ('--version', '16.21.1-fork.2'),
+                              ('--configuration', 'RiotGamesServers')):
+            with self.subTest(option=option):
+                self.assertEqual(subprocess.run(prefix + [option, value], capture_output=True).returncode, 2)
+        path.with_suffix('.zip.sha256').write_text('invalid checksum', encoding='utf-8')
+        self.assertEqual(subprocess.run(prefix, capture_output=True).returncode, 2)
 
 
 if __name__ == '__main__':

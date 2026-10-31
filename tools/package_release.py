@@ -130,11 +130,24 @@ def main() -> int:
     package.add_argument('--output-dir', type=Path, default=root / 'artifacts' / 'release')
     verify = commands.add_parser('verify')
     verify.add_argument('archives', type=Path, nargs='+')
+    verify.add_argument('--source-commit')
+    verify.add_argument('--version')
+    verify.add_argument('--configuration', choices=CONFIGURATIONS)
+    verify.add_argument('--require-checksum', action='store_true')
     args = parser.parse_args()
     try:
         if args.command == 'verify':
             for path in args.archives:
                 manifest = verify_archive(path)
+                for field, expected in (('source_commit', args.source_commit), ('version', args.version),
+                                        ('configuration', args.configuration)):
+                    if expected and manifest[field] != expected:
+                        raise ValueError(f'{path.name} 的 {field} 与待发布版本不一致')
+                checksum_path = path.with_suffix('.zip.sha256')
+                if args.require_checksum or checksum_path.exists():
+                    expected_checksum = f'{digest(path.read_bytes())}  {path.name}'
+                    if checksum_path.read_text(encoding='utf-8-sig').strip() != expected_checksum:
+                        raise ValueError(f'{path.name} 的外部 SHA-256 文件不一致')
                 print(f"校验通过：{path.name} / {manifest['source_commit']}")
             return 0
         if git_output(root, 'status', '--porcelain'):
