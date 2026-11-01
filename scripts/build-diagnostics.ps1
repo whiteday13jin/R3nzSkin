@@ -27,6 +27,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw '核心诊断自检编译失败' }
     & (Join-Path $testOutput 'CoreDiagnosticsTests.exe')
     if ($LASTEXITCODE -ne 0) { throw '核心诊断自检失败' }
+    $controlOutput = Join-Path $repoRoot 'artifacts\loader-control'
+    foreach ($kind in @('Host', 'Dll', 'Controller')) {
+        & $MSBuildPath tests/native/LoaderControlTests.vcxproj /t:Rebuild /nologo /verbosity:minimal /p:Configuration=Release /p:Platform=x64 "/p:FixtureKind=$kind" "/p:OutDir=$controlOutput\" "/p:IntDir=$controlOutput\obj-$kind\"
+        if ($LASTEXITCODE -ne 0) { throw "$kind 加载器对照编译失败" }
+    }
+    $control = Start-Process -FilePath (Join-Path $controlOutput 'LoaderControlTests.exe') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $controlOutput 'control.stdout.log') -RedirectStandardError (Join-Path $controlOutput 'control.stderr.log')
+    if (-not $control.WaitForExit(30000)) {
+        $control.Kill()
+        $control.WaitForExit()
+        throw '自有进程加载器对照超时；Job 将清理本次测试子进程'
+    }
+    Get-Content (Join-Path $controlOutput 'control.stdout.log')
+    if ($control.ExitCode -ne 0) { throw "自有进程加载器对照失败：$($control.ExitCode)" }
     foreach ($project in @('R3nzSkin', 'R3nzSkin_Injector')) {
         $objectDir = Join-Path $repoRoot "artifacts\obj-diagnostics\$Configuration\$project"
         & $MSBuildPath "$project\$project.vcxproj" /m /t:Rebuild /nologo /verbosity:minimal /p:Platform=x64 "/p:Configuration=$Configuration" /p:R3nzDiagnostics=true "/p:SolutionDir=$repoRoot\" "/p:OutDir=$destination\" "/p:IntDir=$objectDir\"
