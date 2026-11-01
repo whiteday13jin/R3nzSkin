@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <clocale>
+#include <cerrno>
 #include <chrono>
 #include <thread>
 
@@ -12,6 +13,7 @@
 #include "Memory.hpp"
 
 #include "SDK/GameState.hpp"
+#include "CoreDiagnostics.hpp"
 
 bool WINAPI HideThread(const HANDLE hThread) noexcept
 {
@@ -34,11 +36,16 @@ __declspec(safebuffers) static void WINAPI DllAttach([[maybe_unused]] LPVOID lp)
 {
 	using namespace std::chrono_literals;
 
+	CoreDiagnostics::record("worker_enter");
 	cheatManager.start();
+#ifndef R3NZ_DIAGNOSTICS
 	if (HideThread(::GetCurrentThread()))
 		cheatManager.logger->addLog("Thread Hidden!\n");
+#endif
 
+	CoreDiagnostics::record("client_search_begin");
 	cheatManager.memory->Search(true);
+	CoreDiagnostics::record("game_running_wait");
 	while (true) {
 		std::this_thread::sleep_for(1s);
 		
@@ -48,18 +55,25 @@ __declspec(safebuffers) static void WINAPI DllAttach([[maybe_unused]] LPVOID lp)
 			break;
 	}
 	cheatManager.logger->addLog("GameClient found!\n");
+	CoreDiagnostics::record("game_running");
 	
 	std::this_thread::sleep_for(500ms);
+	CoreDiagnostics::record("full_search_begin");
 	cheatManager.memory->Search(false);
+	CoreDiagnostics::record("full_search_returned");
 	cheatManager.logger->addLog("All offsets found!\n");
 	std::this_thread::sleep_for(500ms);
 
+	CoreDiagnostics::record("config_begin");
 	cheatManager.config->init();
 	cheatManager.config->load();
 	cheatManager.gui->is_open = cheatManager.config->isOpen;
 	cheatManager.logger->addLog("CFG loaded!\n");
+	CoreDiagnostics::record("config_loaded");
 	
+	CoreDiagnostics::record("hooks_install_begin");
 	cheatManager.hooks->install();
+	CoreDiagnostics::record("hooks_install_returned");
 		
 	while (cheatManager.cheatState)
 		std::this_thread::sleep_for(250ms);
@@ -74,10 +88,19 @@ __declspec(safebuffers) BOOL APIENTRY DllMain(const HMODULE hModule, const DWORD
 	if (reason != DLL_PROCESS_ATTACH)
 		return FALSE;
 
+#ifdef R3NZ_DIAGNOSTICS
+	CoreDiagnostics::record("process_attach");
+#else
 	HideThread(hModule);
+#endif
 	std::setlocale(LC_ALL, ".utf8");
 
-	::_beginthreadex(nullptr, 0u, reinterpret_cast<_beginthreadex_proc_type>(DllAttach), nullptr, 0u, nullptr);
+	const auto worker = ::_beginthreadex(nullptr, 0u, reinterpret_cast<_beginthreadex_proc_type>(DllAttach), nullptr, 0u, nullptr);
+#ifdef R3NZ_DIAGNOSTICS
+	CoreDiagnostics::record(worker ? "worker_created" : "worker_create_failed", worker ? 0 : static_cast<DWORD>(errno));
+	if (worker) ::CloseHandle(reinterpret_cast<HANDLE>(worker));
+#else
 	::CloseHandle(hModule);
+#endif
 	return TRUE;
 }

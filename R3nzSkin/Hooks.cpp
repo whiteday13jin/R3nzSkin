@@ -1,6 +1,8 @@
 #pragma warning(disable : 6011)
 
 #include <Windows.h>
+#include "CoreDiagnostics.hpp"
+#include <atomic>
 #include <ShlObj.h>
 #include <cinttypes>
 #include <filesystem>
@@ -255,6 +257,10 @@ namespace d3d_vtable {
 				ImGui::Render();
 				d3d11_device_context->OMSetRenderTargets(1, &main_render_target_view, nullptr);
 				::ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+#ifdef R3NZ_DIAGNOSTICS
+				static std::atomic_flag recorded = ATOMIC_FLAG_INIT;
+				if (!recorded.test_and_set()) CoreDiagnostics::record("menu_draw_submitted");
+#endif
 			}
 		}
 	}
@@ -263,6 +269,10 @@ namespace d3d_vtable {
 	struct dxgi_present {
 		static long WINAPI hooked(IDXGISwapChain* p_swap_chain, UINT sync_interval, UINT flags) noexcept
 		{
+#ifdef R3NZ_DIAGNOSTICS
+			static std::atomic_flag recorded = ATOMIC_FLAG_INIT;
+			if (!recorded.test_and_set()) CoreDiagnostics::record("present_enter");
+#endif
 			std::call_once(init_device, [&]() { init_imgui(p_swap_chain); });
 			render();
 			return m_original(p_swap_chain, sync_interval, flags);
